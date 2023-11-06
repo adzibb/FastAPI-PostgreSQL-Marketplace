@@ -1,11 +1,13 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.encoders import jsonable_encoder
 from sqlalchemy.orm import Session
+from typing import Annotated
 
 import models
 from database import engine
-from routers.users import get_db
+from routers.users import get_db, get_current_active_user
 from schemas.product import ProductCreate, ProductInDB, Product
+from schemas.user import User
 
 models.Base.metadata.create_all(bind=engine)
 

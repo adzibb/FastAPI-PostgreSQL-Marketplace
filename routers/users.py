@@ -17,12 +17,12 @@ models.Base.metadata.create_all(bind=engine)
 router = APIRouter()
 
 
-SECRET_KEY = "016a5ba1b6ead05abc518c5676421b3ab3346e09191385bd41284bc1366369a9"
+SECRET_KEY = "0902514877316beda24e331f385e431b261d990e8fcea093f9a39150c8748dff"
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="users/token")
 
 
 class Token(BaseModel):
@@ -53,16 +53,14 @@ def get_password_hash(password):
 
 def get_user(db: Session, username: str):
     user = db.query(models.User).filter(models.User.username == username).first()
-    # if user is None:
-    #     raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Incorrectt credential")
-    #
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User does not exists")
+
     return user
 
 
 def authenticate_user(username: str, password: str, db: Session):
     user = get_user(db, username)
-    if not user:
-        return False
     if not verify_password(password, user.password_hash):
         return False
     return user
@@ -79,44 +77,7 @@ def create_access_token(data: dict, expires_delta: timedelta | None = None):
     return encoded_jwt
 
 
-@router.post("/register", response_model=User)
-async def register_user(user: UserInDB, db: Session = Depends(get_db)):
-    # check if username has been taken
-    user_get = db.query(models.User).filter(
-        models.User.username == user.username or models.User.email == user.email
-    ).first()
-    if user_get is not None:
-        raise HTTPException(status_code=status.HTTP_406_NOT_ACCEPTABLE, detail="username or email has been taken")
-
-    # save user details to database
-    new_user = models.User(
-        username=user.username,
-        password_hash=get_password_hash(user.password),  # hash the password
-        email=user.email,
-        full_name=user.full_name,
-    )
-    db.add(new_user)
-    db.commit()
-    db.refresh(new_user)
-    return new_user
-
-
-# @router.post("/login")
-# async def login_user(user: UserLogin, user_repo: Session = Depends(get_db)):
-#     get_user = user_repo.query(models.User).filter(models.User.username == user.username).first()
-#     if get_user is None or not verify_password(user.password, get_user.password):
-#         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Incorrect username or password")
-
-#     expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-#     expires_delta = datetime.utcnow() + expires
-
-#     to_encode = {"sub": user.username, "exp": expires_delta}
-#     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
-
-#     return {"access_token": encoded_jwt, "token_type": "bearer"}
-
-
-def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+async def get_current_user(token: Annotated[str, Depends(oauth2_scheme)], db: Session = Depends(get_db)):
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
@@ -130,7 +91,7 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
         token_data = TokenData(username=username)
     except JWTError:
         raise credentials_exception
-    user = get_user(db, username=token_data.username)
+    user = get_user(db=db, username=token_data.username)
     if user is None:
         raise credentials_exception
     return user
@@ -140,6 +101,28 @@ async def get_current_active_user(
     current_user: Annotated[User, Depends(get_current_user)]
 ):
     return current_user
+
+
+@router.post("/register", response_model=User)
+async def register_user(user: UserInDB, db: Session = Depends(get_db)):
+    # check if username has been taken
+    user_get = db.query(models.User).filter(
+        models.User.username == user.username or models.User.email == user.email
+    ).first()
+    if user_get:
+        raise HTTPException(status_code=status.HTTP_406_NOT_ACCEPTABLE, detail="username or email has been taken")
+
+    # save user details to database
+    new_user = models.User(
+        username=user.username,
+        password_hash=get_password_hash(user.password_hash),  # hash the password
+        email=user.email,
+        full_name=user.full_name,
+    )
+    db.add(new_user)
+    db.commit()
+    db.refresh(new_user)
+    return new_user
 
 
 @router.post("/token", response_model=Token)

@@ -1,9 +1,12 @@
+from typing import Annotated
+
 from fastapi import APIRouter, HTTPException, status, Depends
 from sqlalchemy.orm import Session
 
 import models
-from routers.users import get_db
+from routers.users import get_db, get_current_active_user
 from schemas.cart import Item
+from schemas.user import User
 
 router = APIRouter()
 
@@ -52,11 +55,16 @@ def update_prod_quantity():
 
 
 @router.post("/new-cart", description="Create new empty cart")
-async def create_cart(your_name: str, db: Session = Depends(get_db)):
+async def create_cart(current_user: Annotated[User, Depends(get_current_active_user)], db: Session = Depends(get_db)):
     # check if user exists in db
-    user = db.query(models.User).filter(models.User.username == your_name).first()
+    user = db.query(models.User).filter(models.User.username == current_user.username).first()
     if not user:
         raise not_found_404(details="User does not exist")
+
+    # check if user has cart already
+    user_cart = db.query(models.Cart).filter(models.Cart.user == user).first()
+    if user_cart:
+        return {"message": "You already have a cart. You can add products to your cart."}
 
     # create new cart with for user and save to db
     cart = models.Cart(user_id=user.user_id)
@@ -68,9 +76,12 @@ async def create_cart(your_name: str, db: Session = Depends(get_db)):
 
 
 @router.get("/view-items", description="View all the products in your cart")
-async def view_cart_content(username: str, db: Session = Depends(get_db)):
+async def view_cart_content(
+        current_user: Annotated[User, Depends(get_current_active_user)],
+        db: Session = Depends(get_db)
+):
     # check if user exists in db
-    user = db.query(models.User).filter(models.User.username == username).first()
+    user = db.query(models.User).filter(models.User.username == current_user.username).first()
     if not user:
         raise not_found_404(details="User does not exist")
 
@@ -97,9 +108,12 @@ async def view_cart_content(username: str, db: Session = Depends(get_db)):
 
 
 @router.post("/add-item", description="Add a product to your cart")
-async def add_new_product(user_name: str, new_product: Item, db: Session = Depends(get_db)):
+async def add_new_product(
+        current_user: Annotated[User, Depends(get_current_active_user)],
+        new_product: Item, db: Session = Depends(get_db)
+):
     # check if the user exists
-    user = db.query(models.User).filter(models.User.username == user_name).first()
+    user = db.query(models.User).filter(models.User.username == current_user.username).first()
     if not user:
         raise not_found_404(details="User does not exist")
 
@@ -155,9 +169,12 @@ async def add_new_product(user_name: str, new_product: Item, db: Session = Depen
 
 
 @router.delete("/remove-product", description="remove a product from your cart")
-async def remove_product(username: str, product_name: str, db: Session = Depends(get_db)):
+async def remove_product(
+        current_user: Annotated[User, Depends(get_current_active_user)],
+        product_name: str, db: Session = Depends(get_db)
+):
     # check if user exists
-    user = db.query(models.User).filter(models.User.username == username).first()
+    user = db.query(models.User).filter(models.User.username == current_user.username).first()
     if not user:
         raise not_found_404(details="User does not exist")
 
@@ -188,9 +205,9 @@ async def remove_product(username: str, product_name: str, db: Session = Depends
 
 
 @router.delete("/delete-cart", description="remove a cart associated with a user")
-async def remove_cart(username: str, db: Session = Depends(get_db)):
+async def delete_cart(current_user: Annotated[User, Depends(get_current_active_user)], db: Session = Depends(get_db)):
     # check if user exists
-    user = db.query(models.User).filter(models.User.username == username).first()
+    user = db.query(models.User).filter(models.User.username == current_user.username).first()
     if not user:
         raise not_found_404(details="User does not exist")
 

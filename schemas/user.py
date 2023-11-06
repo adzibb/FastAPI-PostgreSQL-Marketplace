@@ -8,13 +8,12 @@ class UserBase(BaseModel):
 
 
 class UserInDB(UserBase):
-    password: str
+    password_hash: str
 
     model_config = ConfigDict(from_attributes=True)
 
 
 class User(UserBase):
-    user_id: int
 
     model_config = ConfigDict(from_attributes=True)
 
